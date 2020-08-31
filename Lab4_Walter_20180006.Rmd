@@ -1,0 +1,200 @@
+---
+title: "Reporte Distribuidora del Sur, S.A."
+author: "Hans Walter"
+date: "8/26/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r cache=TRUE, message=FALSE, warning=FALSE, echo=FALSE}
+library(dplyr)
+library(readr)
+library(tidyverse)
+library(readxl)
+library(RColorBrewer)
+library(scales)
+```
+
+
+```{r cache=TRUE, message=FALSE, warning=FALSE, echo=FALSE}
+df <- read.delim2("tabla_completa.csv", sep = ",")
+df$Q <- as.numeric(df$Q)
+df$CLIENTE <- as.character(df$CLIENTE)
+df$PILOTO <- as.character(df$PILOTO)
+df$CLIENTE <- toupper(df$CLIENTE)
+df$CLIENTE <- gsub(" DESPACHO A CLIENTE", "DESPACHO A CLIENTE", df$CLIENTE)
+df$CLIENTE <- trimws(df$CLIENTE, which = "right")
+```
+
+
+```{r echo=FALSE, eval=FALSE}
+nombres_unicos <- unique(df$PILOTO)
+```
+```{r cache=TRUE, message=FALSE, warning=FALSE, echo=FALSE}
+cliente <- df %>% group_by(CLIENTE) %>%
+  summarise(venta = sum(Q) )
+cliente$CLIENTE <- gsub("/.*", "",cliente$CLIENTE)  
+cliente$CLIENTE <- sub("\\|.*", "", cliente$CLIENTE)
+cliente$CLIENTE <- trimws(cliente$CLIENTE, which = "right")
+cliente2 <- cliente %>% group_by(CLIENTE) %>%
+  summarise(venta = sum(venta))
+nombre_clientes <- as.vector(cliente2$CLIENTE)
+```
+
+```{r cache=TRUE, message=FALSE, warning=FALSE, echo = FALSE}
+ubicaciones <- unique(df$UBICACION)
+```
+# Contratación Personal
+Actualmente cuentan con 9 transportistas, 13 clientes y distribuyen a 2 ubicaciones actualmente. Recomendamos la contratación de 4 transportistas adicionales, para poder tener uno asignado a cada cliente. Tenemos varios registros de entregas de productos faltantes lo cual puede indicar una necesidad de más pilotos y más vehículos. Posiblemente se va a requerir transporte adicional.
+
+# Vehículos
+De los 2180 viajes, sabemos que 712 representan entregas faltantes. En otras palabras, se podría decir que tienen una deficiencia de operación de *38%*. Es de suma importancia reducir el márgen entre un *20% o 10%* del total de envíos, así se reducen gastos adicionales innecearios.
+```{r cache=TRUE, message=FALSE, warning=FALSE, echo = FALSE}
+vehiculos <- df
+vehiculos_faltantes<- vehiculos[grep("FALTANTE", vehiculos$CLIENTE), ]
+cantidad_faltantes <- nrow(vehiculos_faltantes)
+```
+Vamos a denominar las entregas que camiones grandes como *DEMANDAS ALTAS*, camiones pequeños *DEMANDAS MEDIANAS*, y los paneles como *DEMANDAS PEQUEÑAS*. Dado a que la mayoría de entregas faltantes se hacen por medio de camiones grandes, es necesario la compra de al menos 1 camión grande y 2 camiones pequeños. Un camión grande para abastecer la demanda alta, un camión pequeño para abastecer la demanda mediana y el extra que sea capaz de proveer para la demanda mediana y lo faltante de la demanda baja. 
+```{r cache=TRUE, message=FALSE, warning=FALSE, echo=FALSE}
+vehiculos_delivery <- vehiculos_faltantes %>% group_by(UNIDAD) %>%
+  summarise(Porcentaje = n()) %>%
+  mutate(Porcentaje = percent(Porcentaje/sum(Porcentaje))) 
+```
+# Estado de Tarifas
+Observando la cantidad de viajes que se realizan mes a mes, podemos ver que se mantienen en un rango de 192-215 viajes mensuales. Incluso con cambio de temporadas no hay un cambio significativo en la cantidad de viajes realizados. Las tarifas que tiene actualmente la empresa son adecuadas y no debería realizarse cambio por el momento.
+```{r cache=TRUE, message=FALSE, warning=FALSE, echo=FALSE}
+tarifas <- df
+tarifas <- tarifas %>% group_by(MES) %>%
+  summarise(n_pedidos = n())
+```
+
+# Sospecha Robos
+**IMPORTANTE: Se debe tomar en cuenta que el cliente podría haber consumido parte del inventario entregado, lo cual puede explicar la diferencia entre producto entregado y devuelto.**
+Al agrupar los clientes junto con el tipo de entregas, nos damos cuenta que el único cliente con devoluciones es **El Gallo Negro**. Vemos que la suma de entregas es de 83,455, sin embargo el número de inventario que fue devuelto es de 82,778. Existe una diferencia de 677 unidades de inventario, lo cual puede ser un índice de robo por parte de alguno de los pilotos.
+```{r cache=TRUE, message=FALSE, warning=FALSE, echo=FALSE}
+tipo_entregas <- df %>% group_by(CLIENTE) %>%
+  summarise(venta = sum(Q))
+```
+
+```{r cache=TRUE, message=FALSE, warning=FALSE, echo=FALSE}
+devolucion_gn<- df[df$CLIENTE == "EL GALLO NEGRO |||DEVOLUCION",]
+empleados <- unique(devolucion_gn$PILOTO)
+```
+
+```{r cache=TRUE, message=FALSE, warning=FALSE, echo=FALSE}
+top <- df[grep("DEVOLUCION", df$CLIENTE, invert = TRUE), ]
+top <- top[grep("FALTANTE", top$CLIENTE, invert = TRUE), ]
+sporta <- df[grep("SPORTA", df$CLIENTE), ]
+chicharrones <- df[grep("CHICHARRONERIA", df$CLIENTE), ]
+top <- rbind(top,sporta,chicharrones)
+top$CLIENTE<- gsub("/.*", "",top$CLIENTE)
+top$CLIENTE <- sub("\\|.*", "", top$CLIENTE)
+top_clientes <- top %>% group_by(CLIENTE) %>%
+  summarise(Ventas_Totales = sum(Q))
+top_clientes$CLIENTE <- trimws(top_clientes$CLIENTE, which = "right")
+top_clientes <- arrange(top_clientes, desc(Ventas_Totales))
+```
+
+# Ajustes
+Nota: Los registros de Sporta todos están catalogados como **Despacho al Cliente y Faltante**. Filtramos todos los **FALTANTES** (excepto "Sporta" y la "Chicharronería El Rico Colesterol" que asumiremos que todas sus entregas son despachos al cliente), porque solo tomaremos en consideración los registros normales o detallados como **Despacho al Cliente**. 
+Sabemos que el único cliente con devoluciones es **El Gallo Negro**, por lo tanto el total de ventas del mismo es el resultado de la resta de los despachos y las devoluciones.
+```{r cache=TRUE, message=FALSE, warning=FALSE , echo=FALSE}
+resta_devolucion <- df[grep("DEVOLUCION", df$CLIENTE), ]
+resta_devolucion <- sum(resta_devolucion$Q)
+top_clientes[6,2] <- top_clientes[6,2] - resta_devolucion
+top_clientes <- arrange(top_clientes, desc(Ventas_Totales))
+```
+
+# Análisis 80/20 de Clientes
+Podemos ver que no se cumple el principio de Pareto, ya que no demuestra que 20% del total de las empresas generen 80% de las ganancias. Sin embargo, podemos ver que empresas son las más importantes y las que generan más ingresos para Distribuidora del Sur.
+```{r cache=TRUE, message=FALSE, warning=FALSE, echo=FALSE}
+pareto <- top_clientes %>%
+        mutate(
+                cumsum = cumsum(Ventas_Totales),
+                freq = round(Ventas_Totales / sum(Ventas_Totales), 3),
+                cum_freq = cumsum(freq)
+               )
+```
+
+# Gráfica
+```{r cache=TRUE, message=FALSE, warning=FALSE ,echo=FALSE}
+pareto$cumsum <- 100 * pareto$cumsum/tail(pareto$cumsum, n=1)
+
+scaleright <- tail(pareto$cumsum, n = 1)/ head(pareto$Ventas_Totales, n=1)
+
+pareto$CLIENTE <- as.factor(pareto$CLIENTE)
+
+legend_order <- levels(with(pareto, reorder(CLIENTE, -Ventas_Totales)))
+
+grafica <- ggplot(pareto, aes(x = reorder(CLIENTE, -Ventas_Totales), fill = CLIENTE)) +
+  geom_bar(stat = "identity", aes(y = Ventas_Totales)) + 
+  geom_path(aes(y=pareto$cumsum/scaleright, group=1),colour="black", size=0.9) +
+  geom_point(aes(y=pareto$cumsum/scaleright, group=1),colour="black") +
+  scale_y_continuous(sec.axis = sec_axis(~.*scaleright, name = "Acumulativo (%)")) + 
+  theme(axis.title.x=element_blank(),axis.text.x=element_blank()) + ylab("Ventas Totales 2019 en Q") +
+  scale_fill_discrete(breaks = legend_order)
+
+grafica
+```
+\newpage 
+
+# Top 5 Clientes
+1. Universidad Francisco Marroquín
+2. Taquería el Chinito
+3. Abarrotería Ebenezer
+4. El Pinche Obelisco
+5. Bar la Oficina
+
+
+# Top 3 Pilotos
+Los mejores pilotos se califican por el total de ingresos que generaron sus viajes para la empresa.
+
+1. Fernando Mariano Berrio
+2. Ismael Rodero Monteagudo
+3. Pedro Alvarez Parejo
+
+```{r cache=TRUE, message=FALSE, warning=FALSE, echo = FALSE}
+best_pilots <- top %>% group_by(PILOTO) %>%
+  summarise(Viajes_Realizados = n(), Ingresos = sum(Q)) 
+best_pilots <- arrange(best_pilots, -Ingresos)
+orden <- levels(with(best_pilots, reorder(PILOTO, -Ingresos)))
+bp_grafica <- ggplot(best_pilots, aes(x = reorder(PILOTO, -Ingresos), fill = PILOTO)) +
+  geom_bar(stat = "identity", aes(y = Ingresos)) + theme(axis.title.x=element_blank(),axis.text.x=element_blank()) + 
+  scale_fill_discrete(breaks = orden) + ylab("Ingresos generados para la empresa en Q")
+bp_grafica
+```
+\newpage
+
+# Transportes Más Efectivos
+A pesar que los **Camiones Grandes** son los que generan más ingresos, las **Paneles** son las más efectivas, dado que son las que tienen menos incurriencia de entregas faltantes.
+
+### Ranking
+1. Paneles
+2. Camiones Pequeños
+3. Camiones Grandes
+
+```{r cache=TRUE, message=FALSE, warning=FALSE, echo=FALSE}
+vehiculos_ingresos <- top %>% group_by(UNIDAD) %>%
+  summarise(Ingreso = sum(Q))
+vehiculos_ingresos <- arrange(vehiculos_ingresos, -Ingreso)
+```
+
+```{r cache=TRUE, message=FALSE, warning=FALSE, echo=FALSE}
+ranking <- vehiculos_faltantes %>% group_by(UNIDAD) %>%
+  summarise(Ocurrencias_Faltantes = n())
+ranking <- arrange(ranking, Ocurrencias_Faltantes)
+ranking_order <- levels(with(ranking, reorder(UNIDAD, Ocurrencias_Faltantes)))
+ranking_grafica <- ggplot(ranking, aes(x = reorder(UNIDAD, Ocurrencias_Faltantes), fill = UNIDAD)) +
+  geom_bar(stat = "identity", aes(y = Ocurrencias_Faltantes)) + theme(axis.title.x=element_blank()) + 
+  scale_fill_discrete(breaks = ranking_order) + ylab("# de Entregas Faltantes")
+ranking_grafica
+```
+
+
+# Estrategias a Seguir
+
+* Previo a la compra de vehículos y contratación de personal hay que hacer una revisión de logística, que puede ser una causa de las entregas ineficientes. De esta manera, si es un problema de logística, no será necesario contratar personal adicional ni transporte. 
+* Para los registros del próximo año, es necesario implementar una columna adicional en los registros de ID orden o factura. Esto les va a ser útil en el momento que quieran llevar control de cual entrega fue la que resultó en entrega parcial o devolución de productos. Les permitirá ver en qué tipo de vehículo ocurre de manera más frecuente las entregas parciales. Lo cual da una mejor idea, de que tipo de vehículo se necesitan. Finalmente, si tienen sospechas de robo, pueden tener mayor control con el ID de orden/factura de los clientes. Es más fácil identificar si hay una tendencia por parte de 1 o más pilotos donde desaparece inventario.
