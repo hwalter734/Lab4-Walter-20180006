@@ -7,4 +7,5 @@ El laboratorio consistía en investigar y analizar los datos de una distribuidor
 - los transportes más eficientes
 - recomendaciones de estrategias a seguir
 - cualquier otra información relevante
+
 La presentación en PDF presenta de manera concisa los hallazgos, pero pueden revisar el reporte escrito como también el .Rmd para más información.
